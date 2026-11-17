@@ -1,0 +1,24 @@
+[package]
+name = "ovhelm"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Unofficial Windows desktop panel for OVHcloud VPS and dedicated servers"
+repository = "https://github.com/thadoom/ovhelm"
+
+[dependencies]
+eframe = { version = "0.33", default-features = false, features = ["default_fonts", "glow"] }
+ureq = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"
+keyring = { version = "3", features = ["windows-native"] }
+raw-window-handle = "0.6"
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security", "Win32_System_LibraryLoader", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
