@@ -326,3 +326,4 @@ dash.l_stato = état
 dash.l_rete = réseau
 dash.l_backup = sauvegarde
 dash.l_traffico = trafic
+net.blocchi = {n} blocs

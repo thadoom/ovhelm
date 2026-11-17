@@ -1,0 +1,122 @@
+# Release of Ovhelm, built here from the public source (SignPath signs only CI builds).
+# Push a tag v* (or run it by hand with a tag) and this:
+#  1. runs the tests and builds target/release/ovhelm.exe on a clean Windows runner;
+#  2. signs it with SignPath when the secret SIGNPATH_API_TOKEN and the variable
+#     SIGNPATH_ORGANIZATION_ID exist (SignPath Foundation, free for open source); otherwise the
+#     exe goes out unsigned;
+#  3. scans it with Microsoft Defender (fresh signatures) and, with the secret VT_API_KEY, uploads it
+#     to VirusTotal, which also shares it with the antivirus vendors;
+#  4. publishes the release with the notes from .github/release-notes/<tag>.md, plus one line with
+#     the SHA-256, the Defender result and the VirusTotal link.
+# It never pushes commits: it only creates and edits the release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and release (e.g. v0.2.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      SIGN: ${{ secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Keep the unsigned exe
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: ovhelm-unsigned
+          path: target/release/ovhelm.exe
+          if-no-files-found: error
+
+      - name: Sign with SignPath
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ovhelm
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Pick the exe to publish
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          if ($env:SIGN -eq 'true') { Copy-Item signed/ovhelm.exe dist/ } else { Copy-Item target/release/ovhelm.exe dist/ }
+          $sha = (Get-FileHash dist/ovhelm.exe -Algorithm SHA256).Hash.ToLower()
+          "SHA256=$sha" >> $env:GITHUB_ENV
+          $signed = if ($env:SIGN -eq 'true') { 'signed by SignPath Foundation' } else { 'not signed yet' }
+          "SIGNED=$signed" >> $env:GITHUB_ENV
+          "### Ovhelm $env:TAG`n`nSHA-256: ``$sha`` ($signed)`n" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Defender scan
+        shell: pwsh
+        run: |
+          Update-MpSignature -ErrorAction SilentlyContinue
+          $sig = (Get-MpComputerStatus).AntivirusSignatureVersion
+          $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+          $out = & $mp -Scan -ScanType 3 -File "$PWD\dist\ovhelm.exe" -DisableRemediation 2>&1 | Out-String
+          Write-Output $out
+          if ($out -match "found [1-9]\d* threat" -or $out -match "Threat\s*:") {
+            "**Defender ($sig): DETECTED.** Report it as a false positive: https://www.microsoft.com/en-us/wdsi/filesubmission`n" >> $env:GITHUB_STEP_SUMMARY
+            exit 1
+          } elseif ($out -match "found no threats") {
+            "Defender ($sig): clean.`n" >> $env:GITHUB_STEP_SUMMARY
+            "DEFENDER=clean" >> $env:GITHUB_ENV
+          } else {
+            "Defender ($sig): could not scan.`n" >> $env:GITHUB_STEP_SUMMARY
+            "DEFENDER=not scanned" >> $env:GITHUB_ENV
+          }
+
+      - name: VirusTotal upload
+        shell: pwsh
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          if (-not $env:VT_API_KEY) { "VirusTotal: skipped (no VT_API_KEY secret).`n" >> $env:GITHUB_STEP_SUMMARY; exit 0 }
+          # curl, not Invoke-RestMethod -Form: VirusTotal rejects PowerShell's multipart body
+          $r = curl.exe -sS --fail-with-body -H "x-apikey: $env:VT_API_KEY" -F "file=@dist/ovhelm.exe" https://www.virustotal.com/api/v3/files | ConvertFrom-Json
+          if (-not $r.data.id) { throw "VirusTotal upload failed: $r" }
+          $link = "https://www.virustotal.com/gui/file/$env:SHA256"
+          "VT_LINK=$link" >> $env:GITHUB_ENV
+          "VirusTotal: $link`n" >> $env:GITHUB_STEP_SUMMARY
+
+      # bash, not pwsh: pwsh would re-encode the notes (accents) on the way through
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=".github/release-notes/$TAG.md"
+          if [ -f "$notes" ]; then cp "$notes" notes.md; else echo "Ovhelm $TAG" > notes.md; fi
+          vt=""
+          if [ -n "$VT_LINK" ]; then vt=" · <a href=\"$VT_LINK\">VirusTotal report</a>"; fi
+          printf '\n<!-- scan --><sub>SHA-256 <code>%s</code> · %s · Microsoft Defender: %s%s</sub>\n' "$SHA256" "$SIGNED" "$DEFENDER" "$vt" >> notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/ovhelm.exe --clobber
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" dist/ovhelm.exe --title "Ovhelm ${TAG#v}" --notes-file notes.md
+          fi

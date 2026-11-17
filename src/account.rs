@@ -100,7 +100,7 @@ impl App {
                 return;
             }
         };
-        let now = self.client.as_ref().map(|c| c.server_now()).unwrap_or(0);
+        let now = self.now_unix();
         ui.add(egui::TextEdit::singleline(&mut self.f.svc_filter).hint_text(tr("acc.filtra_per_nome_o_prodotto")).desired_width(320.0));
         ui.add_space(8.0);
         let q = self.f.svc_filter.to_lowercase();

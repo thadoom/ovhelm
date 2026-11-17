@@ -217,7 +217,7 @@ impl App {
         let metrics = self.vps_metrics(s, "1h");
         let backup = self.vps_backup(s);
         let snap = self.vps_snap(s);
-        let now = self.client.as_ref().map(|c| c.server_now()).unwrap_or(0);
+        let now = self.now_unix();
 
         let mut act: Option<&str> = None;
         let mut copied = false;

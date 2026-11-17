@@ -180,6 +180,8 @@ pub struct App {
     pub pins: Option<Vec<String>>,
     pub editing: bool,
     pub add_pick: String,
+    /// --demo: dati inventati, nessuna chiamata alle API
+    pub demo: bool,
 }
 
 impl App {
@@ -213,7 +215,29 @@ impl App {
             pins: load_pins(),
             editing: false,
             add_pick: String::new(),
+            demo: false,
         };
+        // --demo [--page dashboard|vps|monitor|network|account|bills|dedicated] [--lang xx]
+        let args: Vec<String> = std::env::args().collect();
+        let arg = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+        if args.iter().any(|a| a == "--demo") {
+            app.demo = true;
+            app.alerts = crate::demo::alerts();
+            if let Some(l) = arg("--lang") {
+                crate::i18n::force(&l);
+            }
+            let vps = crate::demo::VPS[0].to_string();
+            (app.view, app.tab) = match arg("--page").as_deref() {
+                Some("vps") => (View::Machine(Kind::Vps, vps), 0),
+                Some("monitor") => (View::Machine(Kind::Vps, vps), 1),
+                Some("network") => (View::Network, 0),
+                Some("account") => (View::Account, 0),
+                Some("bills") => (View::Account, 1),
+                Some("dedicated") => (View::Machine(Kind::Dedi, crate::demo::DEDI.into()), 0),
+                _ => (View::Overview, 0),
+            };
+            return app;
+        }
         if let Some(c) = load_creds() {
             app.form = c.clone();
             app.connect(c, false);
@@ -236,6 +260,13 @@ impl App {
     /// Dato `key`: lo carica in background la prima volta e lo ricarica quando ha più di `ttl`
     /// secondi (0 = mai), continuando a mostrare il valore vecchio intanto.
     pub fn data(&mut self, key: &str, ttl: f64, f: impl FnOnce(&Client) -> Result<Value, String> + Send + 'static) -> Option<Data> {
+        if self.demo {
+            if !self.store.contains_key(key) {
+                let v = crate::demo::get(key, self.now_unix()).map(|v| Ok(Arc::new(v)));
+                self.store.insert(key.to_string(), Slot { val: v, at: self.now, loading: false });
+            }
+            return self.store.get(key).and_then(|s| s.val.clone());
+        }
         let now = self.now;
         let need = match self.store.get(key) {
             None => true,
@@ -279,6 +310,13 @@ impl App {
         self.job(move |c| Msg::Open(f(c)));
         self.ctx.request_repaint();
     }
+    /// Ora unix: quella del server OVH se collegati, altrimenti quella del PC (demo).
+    pub fn now_unix(&self) -> i64 {
+        self.client.as_ref().map(|c| c.server_now()).unwrap_or_else(|| {
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+        })
+    }
+
     pub fn is_pinned(&mut self, id: &str) -> bool {
         match &self.pins {
             Some(p) => p.iter().any(|x| x == id),
@@ -608,7 +646,7 @@ impl App {
         let heads_at = items.len();
         for (k, s) in &machines {
             let (c, _) = self.machine_state(*k, s);
-            let short = s.split('.').next().unwrap_or(s).to_string();
+            let short = self.display_name(*k, s);
             items.push((View::Machine(*k, s.clone()), if *k == Kind::Vps { "☁" } else { "🖥" }, short, Some(c)));
         }
         let tail_at = items.len();
@@ -896,7 +934,7 @@ impl eframe::App for App {
                 self.header(ui);
             });
         self.resize_edges(ctx);
-        if self.client.is_none() {
+        if self.client.is_none() && !self.demo {
             return self.login_ui(ctx);
         }
         egui::SidePanel::left("rail")

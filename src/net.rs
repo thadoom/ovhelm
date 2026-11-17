@@ -56,7 +56,7 @@ impl App {
         let mut pick = None;
         let mut list_ui = |ui: &mut egui::Ui, sel: &Option<String>| {
             ui::card(ui, false, |ui| {
-                ui.label(h(format!("{} blocchi", items.len()), 16.0));
+                ui.label(h(fill(tr("net.blocchi"), &[("n", items.len().to_string())]), 16.0));
                 ui.add_space(6.0);
                 for it in &items {
                     let ip = ui::sv(&it["ip"]);
@@ -136,7 +136,7 @@ impl App {
             }
             ui.horizontal_wrapped(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut self.f.rev_ip).desired_width(170.0));
-                ui.add(egui::TextEdit::singleline(&mut self.f.rev_name).hint_text("server.tuodominio.it").desired_width(240.0));
+                ui.add(egui::TextEdit::singleline(&mut self.f.rev_name).hint_text("server.example.com").desired_width(240.0));
                 let ok = !self.f.rev_name.trim().is_empty();
                 if ui.add_enabled(ok, ui::primary(tr("net.imposta"))).clicked() {
                     let body = json!({"ipReverse": self.f.rev_ip.trim(), "reverse": self.f.rev_name.trim()});
@@ -208,7 +208,7 @@ impl App {
                                 used.push(seq);
                                 let permit = x["action"] == "permit";
                                 ui.label(format!("#{seq}"));
-                                ui::chip(ui, if permit { col::OK } else { col::CRIT }, if permit { "permetti" } else { "blocca" });
+                                ui::chip(ui, if permit { col::OK } else { col::CRIT }, if permit { tr("net.permetti") } else { tr("net.blocca") });
                                 ui.label(ui::sv(&x["rule"]));
                                 if ui.add(ui::ghost(tr("common.elimina"))).clicked() {
                                     act = Some(Action::call("DELETE", format!("/ip/{e}/firewall/{}/rule/{seq}", enc(&ipf)), None, tr("net.regola_in_rimozione"), &r));

@@ -12,13 +12,13 @@ fn short(s: &str) -> &str {
 }
 
 impl App {
-    /// Riquadri predefiniti: per ogni VPS stato, CPU, RAM e rete; per ogni dedicato lo stato; avvisi e scadenze.
+    /// Riquadri predefiniti: per ogni VPS stato, CPU e rete (la RAM si aggiunge da Personalizza); per ogni dedicato lo stato; avvisi e scadenze.
     pub fn default_pins(&mut self) -> Vec<String> {
         let (machines, _) = self.machines();
         let mut v = Vec::new();
         for (k, s) in &machines {
             match k {
-                Kind::Vps => v.extend(["stato", "cpu", "ram", "rete"].iter().map(|w| format!("vps:{s}:{w}"))),
+                Kind::Vps => v.extend(["stato", "cpu", "rete"].iter().map(|w| format!("vps:{s}:{w}"))),
                 Kind::Dedi => v.push(format!("dedi:{s}:stato")),
             }
         }
@@ -277,7 +277,7 @@ impl App {
             ["scadenze"] => {
                 ui::tile_head(ui, tr("dash.in_scadenza"), tr("dash.prossimi_45_giorni"), None);
                 let svc = self.data("svc/all", 900.0, crate::account::fetch_services);
-                let now = self.client.as_ref().map(|c| c.server_now()).unwrap_or(0);
+                let now = self.now_unix();
                 match &svc {
                     None => ui::loading(ui),
                     Some(Err(_)) => {

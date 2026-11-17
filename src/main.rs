@@ -3,6 +3,7 @@
 mod account;
 mod app;
 mod dedi;
+mod demo;
 mod i18n;
 mod net;
 mod overview;
@@ -15,11 +16,15 @@ mod watch;
 use eframe::egui;
 
 fn main() -> eframe::Result {
-    if !tray::single_instance() {
+    // --demo: dati finti, niente tray né istanza singola (gira accanto a quella vera)
+    let demo = std::env::args().any(|a| a == "--demo");
+    if !demo && !tray::single_instance() {
         return Ok(());
     }
     i18n::init();
-    tray::start();
+    if !demo {
+        tray::start();
+    }
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(tray::TITLE)
         .with_inner_size([1240.0, 820.0])

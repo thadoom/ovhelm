@@ -96,7 +96,7 @@ impl App {
         let v = &info["srv"];
         let svc = &info["svc"];
         let exp = svc["expiration"].as_str().unwrap_or("");
-        let days = ui::days_until(exp, self.client.as_ref().map(|c| c.server_now()).unwrap_or(0));
+        let days = ui::days_until(exp, self.now_unix());
         let rows = [
             (tr("common.ip"), ui::sv(&v["ip"])),
             (tr("dedi.reverse"), ui::sv(&v["reverse"])),

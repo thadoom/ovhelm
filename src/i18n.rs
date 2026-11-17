@@ -60,6 +60,13 @@ fn saved_path() -> Option<std::path::PathBuf> {
     crate::app::data_dir().map(|d| d.join("lang.txt"))
 }
 
+/// Cambia lingua solo per questa sessione (demo, screenshot).
+pub fn force(code: &str) {
+    if let Some(i) = LANGS.iter().position(|l| l.0 == code) {
+        CUR.store(i, Ordering::Relaxed);
+    }
+}
+
 /// Cambia lingua e la ricorda per il prossimo avvio.
 pub fn set(i: usize) {
     CUR.store(i.min(LANGS.len() - 1), Ordering::Relaxed);
